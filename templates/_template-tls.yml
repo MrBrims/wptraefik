@@ -1,0 +1,8 @@
+# Copy to dynamic/<PROJECT_SLUG>-tls.yml and replace PROJECT_SLUG.
+# Generate certs: mkcert <PROJECT_DOMAIN> "*.<PROJECT_DOMAIN>"
+# Save as certs/<PROJECT_SLUG>/local.pem and local-key.pem
+
+tls:
+  certificates:
+    - certFile: /certs/PROJECT_SLUG/local.pem
+      keyFile: /certs/PROJECT_SLUG/local-key.pem

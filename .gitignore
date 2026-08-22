@@ -1,0 +1,14 @@
+# mkcert certificates (generate locally)
+certs/**/*.pem
+certs/**/*-key.pem
+
+# Per-machine TLS configs; keep the example in git
+dynamic/*-tls.yml
+!dynamic/example-tls.yml
+
+# Local Cursor plans
+.cursor/plans/
+
+# OS junk
+.DS_Store
+Thumbs.db

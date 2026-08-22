@@ -1,0 +1,37 @@
+# Traefik static configuration
+
+ping: {}
+
+# API and dashboard configuration
+api:
+  dashboard: true
+  insecure: true # Warning: For local development only
+
+# Define entry points for incoming traffic
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+
+# Configure providers to discover services
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: traefik_web
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# Configure logging
+log:
+  level: INFO
+
+# Enable access logs
+accessLog: {}

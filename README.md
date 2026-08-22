@@ -3,6 +3,7 @@
 [![Traefik](https://img.shields.io/badge/Traefik-v2.11-24A1C1.svg)](https://doc.traefik.io/traefik/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)
 [![mkcert](https://img.shields.io/badge/mkcert-local%20TLS-green.svg)](https://github.com/FiloSottile/mkcert)
+[![WordPress stack](https://img.shields.io/badge/WordPress-wpdocker-21759B.svg)](https://github.com/MrBrims/wpdocker)
 [![Version](https://img.shields.io/badge/Version-1.1.0-green.svg)](#changelog)
 
 A local reverse proxy for Docker projects. Traefik routes containers by domain (`mysite.localhost`) over HTTPS. Each project gets its own **mkcert** certificate (`certs/<slug>/` + `dynamic/<slug>-tls.yml`).
@@ -18,7 +19,38 @@ This repository runs a single Traefik instance that:
 - Loads per-project TLS certificates from `dynamic/*-tls.yml`
 - Exposes a dev dashboard on **http://127.0.0.1:8080** (localhost only, no TLS)
 
-Site projects connect through `docker-compose.override.yml` labels — they stay in their own repositories.
+Site projects connect via Docker labels on the external network `traefik_web` — they stay in their own repositories.
+
+## Works with wpdocker
+
+This repository is the **reverse proxy and TLS layer** only — it does not run WordPress.
+
+The companion stack is **[MrBrims/wpdocker](https://github.com/MrBrims/wpdocker)**: PHP-FPM, Nginx, MySQL, and phpMyAdmin with Traefik labels already wired in `docker-compose.yml`.
+
+## Full stack quick start (with wpdocker)
+
+1. Clone and start Traefik:
+   ```bash
+   git clone https://github.com/MrBrims/wptraefik.git
+   cd wptraefik
+   make up
+   ```
+
+2. Register TLS for the default wpdocker hostnames:
+   ```bash
+   make add-site SLUG=wp DOMAIN=wp.localhost
+   ```
+   Slug `wp` matches `PROJECT_NAME` in wpdocker. The `*.wp.localhost` wildcard covers `pma.wp.localhost`.
+
+3. Clone and start WordPress:
+   ```bash
+   git clone https://github.com/MrBrims/wpdocker.git
+   cd wpdocker
+   cp .env.example .env
+   make start
+   ```
+
+4. Open [https://wp.localhost](https://wp.localhost) and [https://pma.wp.localhost](https://pma.wp.localhost).
 
 ## Requirements
 
@@ -47,7 +79,7 @@ Site projects connect through `docker-compose.override.yml` labels — they stay
    make add-site SLUG=mysite DOMAIN=mysite.localhost
    ```
 
-4. Configure labels in the site project's `docker-compose.override.yml` and run `docker compose up -d` there.
+4. Configure Traefik labels in the site project (if not already present) and run `docker compose up -d` there. [wpdocker](https://github.com/MrBrims/wpdocker) ships with labels in its main `docker-compose.yml`.
 
 After at least one site is configured, open it at `https://<domain>.localhost`.
 
@@ -68,7 +100,7 @@ make remove-site SLUG=mysite                     # remove cert and dynamic TLS
 
 ## Adding a site
 
-Replace `mysite` (folder slug) and `mysite.localhost` (domain). If the site uses `PROJECT_NAME` / `PROJECT_DOMAIN` in `.env`, those values usually match the slug and domain.
+Replace `mysite` (folder slug) and `mysite.localhost` (domain). If the site uses `PROJECT_NAME` and hostname variables in `.env` (as in [wpdocker](https://github.com/MrBrims/wpdocker)), the slug and domain usually match those values.
 
 ### Quick setup (recommended)
 
@@ -111,36 +143,50 @@ docker restart traefik_proxy
 
 #### 3. Site project Docker Compose
 
-In the site's `docker-compose.override.yml`:
+Add Traefik labels to each public service in the site's `docker-compose.yml` or `docker-compose.override.yml`. [wpdocker](https://github.com/MrBrims/wpdocker) already includes them in the main compose file — see the [full example](https://github.com/MrBrims/wpdocker/blob/main/docker-compose.yml).
 
 - Network `traefik_web` (`external: true`)
 - No direct host ports for HTTP (port 80 inside the container)
-- Labels on each public service:
+- Labels on each public service (Nginx + phpMyAdmin example from wpdocker):
 
 ```yaml
-labels:
-  - "traefik.enable=true"
-  - "traefik.http.routers.${PROJECT_NAME}-php.rule=Host(`${PROJECT_DOMAIN}`)"
-  - "traefik.http.routers.${PROJECT_NAME}-php.entrypoints=websecure"
-  - "traefik.http.routers.${PROJECT_NAME}-php.tls=true"
-  - "traefik.http.services.${PROJECT_NAME}-php.loadbalancer.server.port=80"
-  - "traefik.docker.network=traefik_web"
+networks:
+  traefik_web:
+    external: true
+
+services:
+  nginx:
+    networks:
+      - traefik_web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${PROJECT_NAME}-nginx.rule=Host(`${SITE_HOSTNAME}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-nginx.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-nginx.tls=true"
+      - "traefik.http.services.${PROJECT_NAME}-nginx.loadbalancer.server.port=80"
+      - "traefik.docker.network=traefik_web"
+
+  phpmyadmin:
+    networks:
+      - traefik_web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${PROJECT_NAME}-pma.rule=Host(`${PMA_HOSTNAME}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-pma.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-pma.tls=true"
+      - "traefik.http.services.${PROJECT_NAME}-pma.loadbalancer.server.port=80"
+      - "traefik.docker.network=traefik_web"
 ```
 
 If the **service** name differs from the **router** name, add an explicit binding:
 
 ```yaml
-- "traefik.http.routers.${PROJECT_NAME}-php.service=${PROJECT_NAME}-nginx"
+- "traefik.http.routers.${PROJECT_NAME}-nginx.service=${PROJECT_NAME}-web"
 ```
 
-By default Traefik links router and service when they share the same name (e.g. both `${PROJECT_NAME}-php`).
+By default Traefik links router and service when they share the same name (e.g. both `${PROJECT_NAME}-nginx`).
 
-| Service    | Host rule                    | Port |
-|------------|------------------------------|------|
-| phpMyAdmin | `` Host(`pma.${PROJECT_DOMAIN}`) `` | 80   |
-| MailHog    | `` Host(`mail.${PROJECT_DOMAIN}`) `` | 8025 |
-
-Set **https://** URLs in the site project's `.env` / `.env.example` (e.g. `https://mysite.localhost`).
+Set **https://** URLs in the site project's `.env` / `.env.example` (e.g. `SITE_HOSTNAME=wp.localhost`, `PMA_HOSTNAME=pma.wp.localhost`).
 
 #### 4. Start the site project
 
@@ -152,8 +198,7 @@ docker compose up -d
 #### 5. Verify
 
 - https://mysite.localhost
-- https://pma.mysite.localhost (if phpMyAdmin is enabled)
-- https://mail.mysite.localhost (if MailHog is enabled)
+- https://pma.mysite.localhost (if phpMyAdmin is enabled; wpdocker default: `pma.wp.localhost`)
 
 HTTP on port 80 should redirect to HTTPS.
 

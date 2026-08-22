@@ -6,8 +6,8 @@ certs/**/*-key.pem
 dynamic/*-tls.yml
 !dynamic/example-tls.yml
 
-# Local Cursor plans
-.cursor/plans/
+# Local Cursor files
+.cursor/
 
 # OS junk
 .DS_Store

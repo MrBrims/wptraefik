@@ -4,17 +4,18 @@ services:
     container_name: "traefik_proxy"
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "127.0.0.1:8080:8080"
+      - "80:80"       # HTTP → redirect to HTTPS (see traefik.yml)
+      - "443:443"     # HTTPS entrypoint
+      - "127.0.0.1:8080:8080"  # Dashboard: localhost only, not exposed on LAN
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./dynamic:/etc/traefik/dynamic:ro
-      - ./certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker provider: discover site containers
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro  # Static Traefik config
+      - ./dynamic:/etc/traefik/dynamic:ro  # Dynamic TLS configs (hot-reload via file provider)
+      - ./certs:/certs:ro  # mkcert certificates per site
     networks:
       - web
     healthcheck:
+      # Ping endpoint for docker ps / orchestration; does not affect routing
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 10s
       timeout: 3s
@@ -22,4 +23,5 @@ services:
 
 networks:
   web:
+    # External name used by site projects' docker-compose (external: true)
     name: traefik_web

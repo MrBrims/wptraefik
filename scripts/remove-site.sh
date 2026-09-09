@@ -27,6 +27,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Each site is a cert pair + dynamic TLS file; both must be removed together
 CERT_DIR="$ROOT_DIR/certs/$SLUG"
 TLS_FILE="$ROOT_DIR/dynamic/${SLUG}-tls.yml"
 
@@ -49,10 +50,12 @@ if [[ "$REMOVED" != true ]]; then
   exit 1
 fi
 
+# Site projects are separate repos — Traefik labels must be removed manually there
 echo ""
 echo "Remember to remove Traefik labels from the site project's docker-compose.override.yml."
 echo ""
 
+# Traefik stops serving the old cert once the dynamic file is gone
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'traefik_proxy'; then
   echo "Restarting traefik_proxy..."
   docker restart traefik_proxy

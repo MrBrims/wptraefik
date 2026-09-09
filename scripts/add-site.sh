@@ -31,11 +31,13 @@ elif [[ -n "${3:-}" ]]; then
   exit 1
 fi
 
+# Slug becomes the folder name in certs/ and dynamic/ (e.g. certs/mysite/, dynamic/mysite-tls.yml)
 if [[ ! "$SLUG" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
   echo "Invalid slug: $SLUG (use letters, numbers, underscore, hyphen)" >&2
   exit 1
 fi
 
+# mkcert -install must be run once so browsers trust the local CA
 if ! command -v mkcert >/dev/null 2>&1; then
   echo "mkcert not found in PATH. Install mkcert and run 'mkcert -install' first." >&2
   exit 1
@@ -64,11 +66,13 @@ fi
 
 mkdir -p "$CERT_DIR"
 
+# Wildcard covers subdomains (pma., mail., etc.) with a single certificate
 mkcert \
   -cert-file "$CERT_DIR/local.pem" \
   -key-file "$CERT_DIR/local-key.pem" \
   "$DOMAIN" "*.$DOMAIN"
 
+# Generate dynamic/<slug>-tls.yml from template; Traefik loads it via file provider
 sed "s/PROJECT_SLUG/$SLUG/g" "$TEMPLATE" > "$TLS_FILE"
 
 echo "Created:"
@@ -81,6 +85,7 @@ echo "  1. Add Traefik labels in the site project's docker-compose.override.yml"
 echo "  2. Set https:// URLs in the site project's .env"
 echo ""
 
+# Restart picks up the new dynamic TLS config immediately (watch may lag on some setups)
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'traefik_proxy'; then
   echo "Restarting traefik_proxy..."
   docker restart traefik_proxy
